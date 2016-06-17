@@ -125,15 +125,15 @@ function administration.init_flags(cmd_pat) return {
 } end
 
 administration.antiflood = {
-	text = 10,
-	voice = 10,
-	audio = 10,
-	contact = 10,
-	photo = 20,
-	video = 20,
-	location = 20,
-	document = 20,
-	sticker = 30
+	text = 5,
+ 	voice = 5,
+ 	audio = 5,
+ 	contact = 5,
+ 	photo = 10,
+ 	video = 10,
+ 	location = 10,
+	document = 10,
+ 	sticker = 20
 }
 
 administration.ranks = {
@@ -943,34 +943,40 @@ function administration.init_command(self_, config)
 		{ -- /flags
 			triggers = utilities.triggers(self_.info.username, config.cmd_pat):t('flags?', true).table,
 
-			command = 'flag \\[i]',
+			command = 'flag \\[i] ...',
 			privilege = 3,
 			interior = true,
-			doc = 'Returns a list of flags or toggles the specified flag.',
+			doc = 'Returns a list of flags or toggles the specified flags.',
 
 			action = function(self, msg, group, config)
+				local output = ''
 				local input = utilities.input(msg.text)
 				if input then
-					input = utilities.get_word(input, 1)
-					input = tonumber(input)
-					if not input or not administration.flags[input] then
+					local index = utilities.index(input)
+ 					for _, i in ipairs(index) do
+ 						n = tonumber(i)
+ 						if n and administration.flags[n] then
+ 							if group.flags[n] == true then
+ 								group.flags[n] = false
+ 								output = output .. administration.flags[n].disabled .. '\n'
+ 							else
+ 								group.flags[n] = true
+ 								output = output .. administration.flags[n].enabled .. '\n'
+ 							end
+ 						end
+ 					end
+ 					if output == '' then
 						input = false
 					end
 				end
 				if not input then
-					local output = '*Flags for ' .. msg.chat.title .. ':*\n'
-					for i,v in ipairs(administration.flags) do
+					output = '*Flags for ' .. msg.chat.title .. ':*\n'
+ 					for i, flag in ipairs(administration.flags) do
 						local status = group.flags[i] or false
-						output = output .. '`[' .. i .. ']` *' .. v.name .. '*` = ' .. tostring(status) .. '`\n• ' .. v.desc .. '\n'
+						output = output .. '*' .. i .. '. ' .. flag.name .. '* `[' .. tostring(status) .. ']`\n• ' .. flag.desc .. '\n'
 					end
-					utilities.send_message(self, msg.chat.id, output, true, nil, true)
-				elseif group.flags[input] == true then
-					group.flags[input] = false
-					utilities.send_reply(self, msg, administration.flags[input].disabled)
-				else
-					group.flags[input] = true
-					utilities.send_reply(self, msg, administration.flags[input].enabled)
 				end
+			utilities.send_message(self, msg.chat.id, output, true, nil, true)
 			end
 		},
 
@@ -1293,10 +1299,10 @@ function administration.init_command(self_, config)
 		{ -- /gadd
 			triggers = utilities.triggers(self_.info.username, config.cmd_pat):t('gadd', true).table,
 
-			command = 'gadd [i] ...',
+			command = 'gadd \\[i] ...',
 			privilege = 5,
 			interior = false,
-			doc = 'Adds a group to the administration system. Pass numbers as arguments to enable those flags immediately. For example, this would add the group and enable the unlisted flag, antibot, and antiflood:\n/gadd 1 4 5',
+			doc = 'Adds a group to the administration system. Pass numbers as arguments to enable those flags immediately.\nExample usage:\n\t/gadd 1 4 5\nThis would add a group and enable the unlisted flag, antibot, and antiflood.',
 
 			action = function(self, msg, group, config)
 				if msg.chat.id == msg.from.id then
@@ -1304,6 +1310,7 @@ function administration.init_command(self_, config)
 				elseif self.database.administration.groups[msg.chat.id_str] then
 					utilities.send_reply(self, msg, 'I am already administrating this group.')
 				else
+					local output = 'I am now administrating this group.'
 					local flags = {}
 					for i = 1, #administration.flags do
 						flags[i] = false
@@ -1312,9 +1319,10 @@ function administration.init_command(self_, config)
 					if input then
 						local index = utilities.index(input)
 						for _, i in ipairs(index) do
-							i = tonumber(i)
-							if i and i < #administration.flags and i > 0 then
-								flags[i] = true
+							n = tonumber(i)
+ 							if n and administration.flags[n] and flags[n] ~= true then
+								flags[n] = true
+ 								output = output .. '\n' .. administration.flags[n].short
 							end
 						end
 					end
@@ -1334,7 +1342,7 @@ function administration.init_command(self_, config)
 					}
 					administration.update_desc(self, msg.chat.id, config)
 					table.insert(self.database.administration.activity, msg.chat.id_str)
-					utilities.send_reply(self, msg, 'I am now administrating this group.')
+					utilities.send_reply(self, msg, output)
 					drua.channel_set_admin(msg.chat.id, self.info.id, 2)
 				end
 			end
@@ -1418,18 +1426,6 @@ function administration.init_command(self_, config)
 						utilities.send_message(self, id, input, true, nil, true)
 					end
 				end
-			end
-		},
-
-		{ -- /buildwall :^)
-			triggers = utilities.triggers(self_.info.username, config.cmd_pat):t('buildwall').table,
-			privilege = 3,
-			interior = true,
-			action = function(self, msg, group, config)
-				for i = 2, 5 do
-					group.flags[i] = true
-				end
-				utilities.send_message(self, msg.chat.id, 'antisquig, antisquig++, antibot, and antiflood have been enabled.')
 			end
 		}
 
