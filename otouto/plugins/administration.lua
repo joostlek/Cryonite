@@ -67,6 +67,7 @@ function administration:init(config)
 	drua.PORT = config.cli_port or 4567
 
 	administration.flags = administration.init_flags(config.cmd_pat)
+	administration.modsets = administration.init_modset(config.cmd_pat)
 	administration.init_command(self, config)
 
 	administration.doc = '`Returns a list of administrated groups.\nUse '..config.cmd_pat..'ahelp for more administrative commands.`'
@@ -121,6 +122,16 @@ function administration.init_flags(cmd_pat) return {
 		short = 'This group does not acknowledge global bans.',
 		enabled = 'This group will no longer remove users for being globally banned.',
 		disabled = 'This group will now remove users for being globally banned.'
+	}
+} end
+
+function administration.init_modset(cmd_pat) return {
+	[1] = {
+		name = 'forward',
+		desc = 'Forwards ban and kick messages to the modgroup.',
+		short = 'This group forwards modmessages to the modgroup.',
+		enabled = 'This group is now forwarding to the modgroup.',	
+		disabled = 'This group is no longer forwarding to the modgroup.'
 	}
 } end
 
@@ -349,6 +360,24 @@ function administration.init_command(self_, config)
 							user.reason = 'antiflood'
 							user.output = administration.flags[5].kicked:gsub('GROUPNAME', msg.chat.title)
 							self.admin_temp.flood[msg.chat.id_str][msg.from.id_str] = nil
+							if group.modgroup then
+								if group.modset[1] == true then
+									local modput = ""
+									local name = ""
+									local users = self.database.users[msg.from.id_str]
+									if users.last_name then
+										name = users.first_name .." ".. users.last_name
+									else
+										name = users.first_name
+									end
+									if users.username then
+										modput = name.. " (@" ..users.username.. ") has been kicked due to anti-flood."
+									else
+										modput = name.. " has been kicked due to anti-flood."
+									end
+								utilities.send_message(self, group.modgroup, modput, true, nil, true)
+								end
+							end
 						end
 					end
 
@@ -400,7 +429,7 @@ function administration.init_command(self_, config)
 					end
 
 				elseif msg.new_chat_title then
-					if rank < 3 then
+					if rank < 2 then
 						drua.rename_chat(msg.chat.id, group.name)
 					else
 						group.name = msg.new_chat_title
@@ -452,6 +481,24 @@ function administration.init_command(self_, config)
 						user.dont_unban = true
 						user.reason = 'antiflood autoban: ' .. user.reason
 						user.output = user.output .. '\nYou have been banned for being autokicked too many times.'
+						if group.modgroup then
+							if group.modset[1] == true then
+								local modput = ""
+								local name = ""
+								local users = self.database.users[msg.from.id_str]
+								if users.last_name then
+									name = users.first_name .." ".. users.last_name
+								else
+									name = users.first_name
+								end
+								if users.username then									
+									modput = name.. " (@" ..users.username.. ") has been automatically banned by anti-flood."
+								else
+									modput = name.. " has been automatically banned by anti-flood."
+								end
+							utilities.send_message(self, group.modgroup, modput, true, nil, true)
+							end
+						end
 					end
 				end
 
@@ -705,7 +752,7 @@ function administration.init_command(self_, config)
 				local target = administration.get_target(self, msg, config)
 				local group = self.database.administration.groups[msg.chat.id_str]
 				local executor = self.database.users[msg.from.id_str]
-				if target.err then
+				if target.err then	
 					utilities.send_reply(self, msg, target.err)
 				elseif target.rank > 1 then
 					utilities.send_reply(self, msg, target.name .. ' is too privileged to be kicked.')
@@ -716,13 +763,15 @@ function administration.init_command(self_, config)
 						bindings.unbanChatMember(self, { chat_id = msg.chat.id, user_id = target.id } )
 					end
 					if group.modgroup then
-						local modput = "Error occured"
-						if target.username then
-							modput = target.name .. " (@" .. target.username ..") has been kicked by @"..executor.username
-						else
-							modput = target.name .. "  has been kicked by @"..executor.username
+						if group.modset[1] == true then
+							local modput = "Error occured"
+							if target.username then
+								modput = target.name .. " (@" .. target.username ..") has been kicked by @"..executor.username
+							else
+								modput = target.name .. "  has been kicked by @"..executor.username
+							end
+						utilities.send_message(self, tonumber(group.modgroup), modput, true, nil, true)
 						end
-						utilities.send_message(self, group.modgroup, modput, true, nil, true)
 					end
 				end
 			end
@@ -752,6 +801,7 @@ function administration.init_command(self_, config)
 					group.bans[target.id_str] = true
 				end
 				if group.modgroup then
+					if group.modset[1] == true then
 						local modput = "Error occured"
 						if target.username then
 							modput = target.name .. " (@" .. target.username ..") has been banned by @"..executor.username
@@ -759,6 +809,7 @@ function administration.init_command(self_, config)
 							modput = target.name .. "  has been banned by @"..executor.username
 						end
 						utilities.send_message(self, group.modgroup, modput, true, nil, true)
+					end
 				end
 			end
 		},
@@ -1193,16 +1244,20 @@ function administration.init_command(self_, config)
 								modded.moddedgroup = msg.chat.id_str
 								output = "This group is now moderated by ".. modded.name.."!"
 								utilities.send_message(self, input, "This group is now moderating ".. mod.name.."!", true, nil, true)
+								mod.modset[1] = true
 							elseif self.database.users[tostring(input)] then
 								local mod = self.database.administration.groups[msg.chat.id_str]
 								local modded = self.database.users[tostring(input)]
 								output = "This group is now moderated by @".. modded.username.."!"
 								utilities.send_message(self, input, "You are now moderating ".. mod.name.."!", true, nil, true)
+								mod.modset[1] = true
 							elseif self.database.administration.groups[tostring(-1000000000000 - input)] then
 								local modded = self.database.administration.groups[tostring(-1000000000000 - input)]
 								mod.modgroup = tostring(-1000000000000 - input)
 								modded.moddedgroup = msg.chat.id_str
-								output = "This group is now moderated by ".. modded.name.."!"									utilities.send_message(self, -1000000000000 - input, "This group is now moderating ".. mod.name.."!", true, nil, true)
+								output = "This group is now moderated by ".. modded.name.."!"									
+								utilities.send_message(self, -1000000000000 - input, "This group is now moderating ".. mod.name.."!", true, nil, true)
+								mod.modset[1] = true
 							else
 								output = 'The modgroup is not administrated by me yet, use `/gadd` in that group first'
 							end
@@ -1214,6 +1269,47 @@ function administration.init_command(self_, config)
 					output = 'Please insert a GroupID'
 				end
 				utilities.send_message(self, msg.chat.id, output, true, nil, true)
+			end
+		},
+	
+		{ -- /modset
+			triggers = utilities.triggers(self_.info.username, config.cmd_pat):t('modset', true).table,
+
+			command = 'modset',
+			privilege = 3,
+			interior = true,
+			doc = 'Sets modsettings of a group',
+
+			action = function(self, msg, group, config)
+				local group = self.database.administration.groups[msg.chat.id_str]
+				local input = utilities.input(msg.text)
+				local output = ""
+				if input then
+					local index = utilities.index(input)
+ 					for _, i in ipairs(index) do
+ 						n = tonumber(i)
+ 						if n and administration.modsets[n] then
+ 							if group.modset[n] == true then
+ 								group.modset[n] = false
+ 								output = output .. administration.modsets[n].disabled .. '\n'
+ 							else
+ 								group.modset[n] = true
+ 								output = output .. administration.modsets[n].enabled .. '\n'
+ 							end
+ 						end
+ 					end
+ 					if output == '' then
+						input = false
+					end
+				end
+				if not input then
+					output = '*Modsettings for ' .. msg.chat.title .. ':*\n'
+ 					for i, modset in ipairs(administration.modsets) do
+						local status = group.modset[i] or false
+						output = output .. '*' .. i .. '. ' .. modset.name .. '* `[' .. tostring(status) .. ']`\n• ' .. modset.desc .. '\n'
+					end
+				end
+			utilities.send_message(self, msg.chat.id, output, true, nil, true)
 			end
 		},
 
@@ -1338,7 +1434,8 @@ function administration.init_command(self_, config)
 						photo = drua.get_photo(msg.chat.id),
 						founded = os.time(),
 						autokicks = {},
-						autoban = 3
+						autoban = 3,
+						modset = modset
 					}
 					administration.update_desc(self, msg.chat.id, config)
 					table.insert(self.database.administration.activity, msg.chat.id_str)
