@@ -127,11 +127,25 @@ function administration.init_flags(cmd_pat) return {
 
 function administration.init_modset(cmd_pat) return {
 	[1] = {
-		name = 'forward',
+		name = 'Mod Messages',
 		desc = 'Forwards ban and kick messages to the modgroup.',
 		short = 'This group forwards modmessages to the modgroup.',
 		enabled = 'This group is now forwarding to the modgroup.',	
 		disabled = 'This group is no longer forwarding to the modgroup.'
+	},
+	[2] = {
+		name = 'Remote Kicking',
+		desc = 'Kicks executed in modgroup are for the group itself',
+		short = "The kicks from modgroup apply here",
+		enabled = 'The kicks done in modgroup are now excuted in the main group.',
+		disabled = "The kicks done in modgroup are now excuted in the modgroup"
+	},
+	[3] = {
+		name = 'Shared Settings',
+		desc = 'Settings applied in the modgroup are applied to the group aswell.',
+		short = "The group's settings are shared.",
+		enabled = 'The settings made in the modgroup apply for this group.',
+		disabled = "The settings made in the modgroup don't apply for this group anymore."
 	}
 } end
 
@@ -668,20 +682,27 @@ function administration.init_command(self_, config)
 			action = function(self, msg, group, config)
 				local output
 				local input = utilities.get_word(msg.text_lower, 2)
+				local groupid = msg.chat.id
+				if group.moddedgroup then
+					if self.database.administration.groups[group.moddedgroup].modset[2] == true then
+						groupid = tonumber(group.moddedgroup)
+						group = self.database.administration.groups[group.moddedgroup]
+					end
+				end
 				input = tonumber(input)
 				if #group.rules > 0 then
 					if input and group.rules[input] then
 						output = '*' .. input .. '.* ' .. group.rules[input]
 					else
-						output = '*Rules for ' .. msg.chat.title .. ':*\n'
+						output = '*Rules for ' .. group.name .. ':*\n'
 						for i,v in ipairs(group.rules) do
 							output = output .. '*' .. i .. '.* ' .. v .. '\n'
 						end
 					end
 				else
-					output = 'No rules have been set for ' .. msg.chat.title .. '.'
+					output = 'No rules have been set for ' .. group.name .. '.'
 				end
-				utilities.send_message(self, msg.chat.id, output, true, nil, true)
+			utilities.send_message(self, msg.chat.id, output, true, nil, true)
 			end
 		},
 
@@ -694,9 +715,16 @@ function administration.init_command(self_, config)
 			doc = 'Returns the group\'s message of the day.',
 
 			action = function(self, msg, group, config)
-				local output = 'No MOTD has been set for ' .. msg.chat.title .. '.'
+				local groupid = msg.chat.id
+				if group.moddedgroup then
+					if self.database.administration.groups[group.moddedgroup].modset[2] == true then
+						groupid = tonumber(group.moddedgroup)
+						group = self.database.administration.groups[group.moddedgroup]
+					end
+				end
+				local output = 'No MOTD has been set for ' .. group.name .. '.'
 				if group.motd then
-					output = '*MOTD for ' .. msg.chat.title .. ':*\n' .. group.motd
+					output = '*MOTD for ' .. group.name .. ':*\n' .. group.motd
 				end
 				utilities.send_message(self, msg.chat.id, output, true, nil, true)
 			end
@@ -711,9 +739,16 @@ function administration.init_command(self_, config)
 			doc = 'Returns the group\'s link.',
 
 			action = function(self, msg, group, config)
-				local output = 'No link has been set for ' .. msg.chat.title .. '.'
+				local groupid = msg.chat.id
+				if group.moddedgroup then
+					if self.database.administration.groups[group.moddedgroup].modset[2] == true then
+						groupid = tonumber(group.moddedgroup)
+						group = self.database.administration.groups[group.moddedgroup]
+					end
+				end
+				local output = 'No link has been set for ' .. group.name .. '.'
 				if group.link then
-					output = '[' .. msg.chat.title .. '](' .. group.link .. ')'
+					output = '[' .. group.name .. '](' .. group.link .. ')'
 				end
 				utilities.send_message(self, msg.chat.id, output, true, nil, true)
 			end
@@ -752,15 +787,22 @@ function administration.init_command(self_, config)
 				local target = administration.get_target(self, msg, config)
 				local group = self.database.administration.groups[msg.chat.id_str]
 				local executor = self.database.users[msg.from.id_str]
+				local groupid = msg.chat.id
+				if group.moddedgroup then
+					if self.database.administration.groups[group.moddedgroup].modset[2] == true then
+						groupid = tonumber(group.moddedgroup)
+						group = self.database.administration.groups[group.moddedgroup]
+					end
+				end
 				if target.err then	
 					utilities.send_reply(self, msg, target.err)
 				elseif target.rank > 1 then
 					utilities.send_reply(self, msg, target.name .. ' is too privileged to be kicked.')
 				else
-					administration.kick_user(self, msg.chat.id, target.id, 'kicked by ' .. msg.from.name, config)
-					utilities.send_message(self, msg.chat.id, target.name .. ' has been kicked.')
+					administration.kick_user(self, groupid, target.id, 'kicked by ' .. msg.from.name, config)
+					utilities.send_message(self, groupid, target.name .. ' has been kicked.')
 					if msg.chat.type == 'supergroup' then
-						bindings.unbanChatMember(self, { chat_id = msg.chat.id, user_id = target.id } )
+						bindings.unbanChatMember(self, { chat_id = groupid, user_id = target.id } )
 					end
 					if group.modgroup then
 						if group.modset[1] == true then
@@ -789,6 +831,13 @@ function administration.init_command(self_, config)
 				local target = administration.get_target(self, msg, config)
 				local group = self.database.administration.groups[msg.chat.id_str]
 				local executor = self.database.users[msg.from.id_str]
+				local groupid = msg.chat.id
+				if group.moddedgroup then
+					if self.database.administration.groups[group.moddedgroup].modset[2] == true then
+						groupid = tonumber(group.moddedgroup)
+						group = self.database.administration.groups[group.moddedgroup]
+					end
+				end
 				if target.err then
 					utilities.send_reply(self, msg, target.err)
 				elseif target.rank > 1 then
@@ -826,6 +875,13 @@ function administration.init_command(self_, config)
 				local target = administration.get_target(self, msg, config)
 				local group = self.database.administration.groups[msg.chat.id_str]
 				local executor = self.database.users[msg.from.id_str]
+				local groupid = msg.chat.id
+				if group.moddedgroup then
+					if self.database.administration.groups[group.moddedgroup].modset[2] == true then
+						groupid = tonumber(group.moddedgroup)
+						group = self.database.administration.groups[group.moddedgroup]
+					end
+				end
 				if target.err then
 					utilities.send_reply(self, msg, target.err)
 				else
@@ -861,20 +917,28 @@ function administration.init_command(self_, config)
 
 			action = function(self, msg, group, config)
 				local input = msg.text:match('^'..config.cmd_pat..'setrules[@'..self.info.username..']*(.+)')
+				local groupid = msg.chat.id
+				local group = self.database.administration.groups[msg.chat.id_str]
+				if group.moddedgroup then
+					if self.database.administration.groups[group.moddedgroup].modset[3] == true then
+						groupid = tonumber(group.moddedgroup)
+						group = self.database.administration.groups[group.moddedgroup]
+					end
+				end
 				if input == ' --' or input == ' ' .. utilities.char.em_dash then
 					group.rules = {}
 					utilities.send_reply(self, msg, 'The rules have been cleared.')
 				elseif input then
 					group.rules = {}
 					input = utilities.trim(input) .. '\n'
-					local output = '*Rules for ' .. msg.chat.title .. ':*\n'
+					local output = '*Rules for ' .. group.name .. ':*\n'
 					local i = 1
 					for l in input:gmatch('(.-)\n') do
 						output = output .. '*' .. i .. '.* ' .. l .. '\n'
 						i = i + 1
 						table.insert(group.rules, utilities.trim(l))
 					end
-					utilities.send_message(self, msg.chat.id, output, true, nil, true)
+					utilities.send_message(self, groupid, output, true, nil, true)
 				else
 					utilities.send_reply(self, msg, 'Please specify the new rules.')
 				end
@@ -890,6 +954,13 @@ function administration.init_command(self_, config)
 			doc = 'Changes a single rule. Pass "--" to delete the rule. If i is a number for which there is no rule, adds a rule by the next incremented number.',
 
 			action = function(self, msg, group, config)
+				local groupid = msg.chat.id
+				if group.moddedgroup then
+					if self.database.administration.groups[group.moddedgroup].modset[2] == true then
+						groupid = tonumber(group.moddedgroup)
+						group = self.database.administration.groups[group.moddedgroup]
+					end
+				end
 				local input = utilities.input(msg.text)
 				local output = 'usage: `'..config.cmd_pat..'changerule <i> <newrule>`'
 				if input then
@@ -927,6 +998,13 @@ function administration.init_command(self_, config)
 			doc = 'Sets the group\'s message of the day. Markdown is supported. Pass "--" to delete the message.',
 
 			action = function(self, msg, group, config)
+				local groupid = msg.chat.id
+				if group.moddedgroup then
+					if self.database.administration.groups[group.moddedgroup].modset[2] == true then
+						groupid = tonumber(group.moddedgroup)
+						group = self.database.administration.groups[group.moddedgroup]
+					end
+				end
 				local input = utilities.input(msg.text)
 				if not input and msg.reply_to_message and msg.reply_to_message.text:len() > 0 then
 					input = msg.reply_to_message.text
@@ -938,11 +1016,11 @@ function administration.init_command(self_, config)
 					else
 						input = utilities.trim(input)
 						group.motd = input
-						local output = '*MOTD for ' .. msg.chat.title .. ':*\n' .. input
+						local output = '*MOTD for ' .. group.name .. ':*\n' .. input
 						utilities.send_message(self, msg.chat.id, output, true, nil, true)
 					end
 					if group.grouptype == 'supergroup' then
-						administration.update_desc(self, msg.chat.id, config)
+						administration.update_desc(self, groupid, config)
 					end
 				else
 					utilities.send_reply(self, msg, 'Please specify the new message of the day.')
@@ -959,13 +1037,20 @@ function administration.init_command(self_, config)
 			doc = 'Sets the group\'s join link. Pass "--" to regenerate the link.',
 
 			action = function(self, msg, group, config)
+				local groupid = msg.chat.id
+				if group.moddedgroup then
+					if self.database.administration.groups[group.moddedgroup].modset[2] == true then
+						groupid = tonumber(group.moddedgroup)
+						group = self.database.administration.groups[group.moddedgroup]
+					end
+				end
 				local input = utilities.input(msg.text)
 				if input == '--' or input == utilities.char.em_dash then
 					group.link = drua.export_link(msg.chat.id)
 					utilities.send_reply(self, msg, 'The link has been regenerated.')
 				elseif input then
 					group.link = input
-					local output = '[' .. msg.chat.title .. '](' .. input .. ')'
+					local output = '[' .. group.name .. '](' .. input .. ')'
 					utilities.send_message(self, msg.chat.id, output, true, nil, true)
 				else
 					utilities.send_reply(self, msg, 'Please specify the new link.')
@@ -1000,6 +1085,13 @@ function administration.init_command(self_, config)
 			doc = 'Returns a list of flags or toggles the specified flags.',
 
 			action = function(self, msg, group, config)
+				local groupid = msg.chat.id
+				if group.moddedgroup then
+					if self.database.administration.groups[group.moddedgroup].modset[2] == true then
+						groupid = tonumber(group.moddedgroup)
+						group = self.database.administration.groups[group.moddedgroup]
+					end
+				end
 				local output = ''
 				local input = utilities.input(msg.text)
 				if input then
@@ -1021,7 +1113,7 @@ function administration.init_command(self_, config)
 					end
 				end
 				if not input then
-					output = '*Flags for ' .. msg.chat.title .. ':*\n'
+					output = '*Flags for ' .. group.name .. ':*\n'
  					for i, flag in ipairs(administration.flags) do
 						local status = group.flags[i] or false
 						output = output .. '*' .. i .. '. ' .. flag.name .. '* `[' .. tostring(status) .. ']`\n• ' .. flag.desc .. '\n'
@@ -1040,6 +1132,13 @@ function administration.init_command(self_, config)
 			doc = 'Returns a list of antiflood values or sets one.',
 
 			action = function(self, msg, group, config)
+				local groupid = msg.chat.id
+				if group.moddedgroup then
+					if self.database.administration.groups[group.moddedgroup].modset[2] == true then
+						groupid = tonumber(group.moddedgroup)
+						group = self.database.administration.groups[group.moddedgroup]
+					end
+				end
 				if not group.flags[5] then
 					utilities.send_message(self, msg.chat.id, 'antiflood is not enabled. Use `'..config.cmd_pat..'flag 5` to enable it.', true, nil, true)
 				else
@@ -1080,6 +1179,13 @@ function administration.init_command(self_, config)
 			doc = 'Promotes a user to a moderator. The target may be specified via reply, username, or ID.',
 
 			action = function(self, msg, group, config)
+				local groupid = msg.chat.id
+				if group.moddedgroup then
+					if self.database.administration.groups[group.moddedgroup].modset[2] == true then
+						groupid = tonumber(group.moddedgroup)
+						group = self.database.administration.groups[group.moddedgroup]
+					end
+				end
 				local target = administration.get_target(self, msg, config)
 				if target.err then
 					utilities.send_reply(self, msg, target.err)
@@ -1107,6 +1213,13 @@ function administration.init_command(self_, config)
 			doc = 'Demotes a moderator to a user. The target may be specified via reply, username, or ID.',
 
 			action = function(self, msg, group, config)
+				local groupid = msg.chat.id
+				if group.moddedgroup then
+					if self.database.administration.groups[group.moddedgroup].modset[2] == true then
+						groupid = tonumber(group.moddedgroup)
+						group = self.database.administration.groups[group.moddedgroup]
+					end
+				end
 				local target = administration.get_target(self, msg, config)
 				if target.err then
 					utilities.send_reply(self, msg, target.err)
@@ -1133,6 +1246,13 @@ function administration.init_command(self_, config)
 			doc = 'Promotes a user to the governor. The current governor will be replaced. The target may be specified via reply, username, or ID.',
 
 			action = function(self, msg, group, config)
+				local groupid = msg.chat.id
+				if group.moddedgroup then
+					if self.database.administration.groups[group.moddedgroup].modset[2] == true then
+						groupid = tonumber(group.moddedgroup)
+						group = self.database.administration.groups[group.moddedgroup]
+					end
+				end
 				local target = administration.get_target(self, msg, config)
 				if target.err then
 					utilities.send_reply(self, msg, target.err)
@@ -1162,6 +1282,13 @@ function administration.init_command(self_, config)
 			doc = 'Demotes the governor to a user. The administrator will become the new governor. The target may be specified via reply, username, or ID.',
 
 			action = function(self, msg, group, config)
+				local groupid = msg.chat.id
+				if group.moddedgroup then
+					if self.database.administration.groups[group.moddedgroup].modset[2] == true then
+						groupid = tonumber(group.moddedgroup)
+						group = self.database.administration.groups[group.moddedgroup]
+					end
+				end
 				local target = administration.get_target(self, msg, config)
 				if target.err then
 					utilities.send_reply(self, msg, target.err)
@@ -1282,6 +1409,13 @@ function administration.init_command(self_, config)
 
 			action = function(self, msg, group, config)
 				local group = self.database.administration.groups[msg.chat.id_str]
+				local groupid = msg.chat.id
+				if group.moddedgroup then
+					if self.database.administration.groups[group.moddedgroup].modset[2] == true then
+						groupid = tonumber(group.moddedgroup)
+						group = self.database.administration.groups[group.moddedgroup]
+					end
+				end
 				local input = utilities.input(msg.text)
 				local output = ""
 				if input then
